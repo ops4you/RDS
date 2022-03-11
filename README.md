@@ -4,4 +4,4 @@
 ## Realizado por:
 - Hugo Teles
 - Diogo Oliveira
-- Guilherme 
+- Guilherme Soares
