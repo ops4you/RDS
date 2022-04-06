@@ -6,6 +6,11 @@ class RDSTopo( Topo ):
     def build( self ):
         "Desenvolvimento da topologia"
 
+
+        net = Mininet( controller=RemoteController, switch=OVSSwitch,
+                   waitConnected=True )
+
+
         # Criação de Utilizadores e Switch
         
         hostOne = self.addHost( 'h1' )
