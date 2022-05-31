@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from requests import request
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
@@ -26,17 +27,30 @@ from ryu.lib.packet import in_proto
 from ryu.lib.packet import icmp 
 from ryu.lib.packet import tcp  
 from ryu.lib.packet import udp
+from ryu.lib.packet import arp
 
-FILTER_TABLE = 5
-FORWARD_TABLE = 10
+hport_table = {"10.0.1.1": 1,
+             "10.0.1.2": 1,
+             "10.0.1.3": 1,
+             "10.0.2.1": 2,
+             "10.0.2.2": 2,
+             "10.0.2.3": 2,
+             "10.0.3.1": 3,
+             "10.0.3.2": 3,
+             "10.0.3.3": 3
+             }
 
-class SwitchL3(app_manager.RyuApp):
+rport_table = { "10.0.1.254" : 1, "10.0.2.254" : 2 , "10.0.3.254" : 3}
+
+class SimpleSwitch13(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
-        super(SwitchL3, self).__init__(*args, **kwargs)
+        super(SimpleSwitch13, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
-        self.mac_to_ip = {}
+        self.L3SwitchMACs = {}
+        self.ip_to_port = {}
+        
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -44,6 +58,7 @@ class SwitchL3(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
+        
         # install table-miss flow entry
         #
         # We specify NO BUFFER to max_len of the output action due to
@@ -56,10 +71,10 @@ class SwitchL3(app_manager.RyuApp):
                                           ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 0, match, actions)
 
-        # adding default tables/rules in the startup
-        self.add_default_table(datapath)
-        self.add_filter_table(datapath)
-        self.apply_filter_table_rules(datapath)
+        match = parser.OFPMatch(eth_type = ether_types.ETH_TYPE_IPV6)
+        actions = []
+        self.add_flow(datapath, 1, match, actions)
+        self.send_port_desc_stats_request(datapath)
 
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
         ofproto = datapath.ofproto
@@ -69,37 +84,96 @@ class SwitchL3(app_manager.RyuApp):
                                              actions)]
         if buffer_id:
             mod = parser.OFPFlowMod(datapath=datapath, buffer_id=buffer_id,
-                                    priority=priority, table_id=FORWARD_TABLE,
-                                    match=match, instructions=inst)
+                                    priority=priority, match=match,
+                                    instructions=inst)
         else:
             mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
-                                    match=match, table_id=FORWARD_TABLE,
-                                    instructions=inst)
+                                    match=match, instructions=inst)
         datapath.send_msg(mod)
+        
+    def arp_reply(self, datapath, eth, a, in_port):
+        r = hport_table.get(a.src_ip)
+        r1 = hport_table.get(a.dst_ip)
+        r21 = rport_table.get(a.dst_ip)
+        r22 = self.L3SwitchMACs.get(r21)
+        if r:
+            arp_resp = packet.Packet()
+            arp_resp.add_protocol(ethernet.ethernet(ethertype=eth.ethertype,
+                                  dst=eth.src, src=r22))
+            arp_resp.add_protocol(arp.arp(opcode=arp.ARP_REPLY,
+                                  src_mac=r22, src_ip=a.dst_ip,
+                                  dst_mac=a.src_mac,
+                                  dst_ip=a.src_ip))
+                                  
+            arp_resp.serialize()
+            actions = []
+            actions.append(datapath.ofproto_parser.OFPActionOutput(in_port))
+            parser = datapath.ofproto_parser  
+            ofproto = datapath.ofproto
+            out = parser.OFPPacketOut(datapath=datapath, buffer_id=ofproto.OFP_NO_BUFFER,
+                                  in_port=ofproto.OFPP_CONTROLLER, actions=actions, data=arp_resp)
+            datapath.send_msg(out)
+        elif (a.dst_ip not in self.ip_to_port):
+            self.ip_to_port.update({a.dst_ip : r1})
+            arp_resp = packet.Packet()
+            arp_resp.add_protocol(ethernet.ethernet(ethertype=eth.ethertype,
+                                  dst=eth.src, src=r1))
+            arp_resp.add_protocol(arp.arp(opcode=arp.ARP_REPLY,
+                                  src_mac=r1, src_ip=a.dst_ip,
+                                  dst_mac=a.src_mac,
+                                  dst_ip=a.src_ip))
+                                  
+            arp_resp.serialize()
+            actions = []
+            actions.append(datapath.ofproto_parser.OFPActionOutput(in_port))
+            parser = datapath.ofproto_parser  
+            ofproto = datapath.ofproto
+            out = parser.OFPPacketOut(datapath=datapath, buffer_id=ofproto.OFP_NO_BUFFER,
+                                  in_port=ofproto.OFPP_CONTROLLER, actions=actions, data=arp_resp)
+            datapath.send_msg(out)
+    
+    def get_key_from_value(self, d, val):
+           keys = [k for k, v in d.items() if v == val]
+           if keys:
+             return keys[0]
+           return None
 
-    def add_default_table(self, datapath):
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        inst = [parser.OFPInstructionGotoTable(FILTER_TABLE)]
-        mod = parser.OFPFlowMod(datapath=datapath, table_id=0, instructions=inst)
-        datapath.send_msg(mod)
+    def arp_request(self, datapath, eth, ic, in_port):
+        if (ic.dst not in self.ip_to_port):
+         r = hport_table.get(ic.dst) 
+         r2 = self.get_key_from_value(rport_table, r)
+         r3 = self.L3SwitchMACs.get(r)
 
-    def add_filter_table(self, datapath):
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        inst = [parser.OFPInstructionGotoTable(FORWARD_TABLE)]
-        mod = parser.OFPFlowMod(datapath=datapath, table_id=FILTER_TABLE, 
-                                priority=1, instructions=inst)
-        datapath.send_msg(mod)
+        
+         self.logger.info("Requested MAC %s ", r)
+         arp_req = packet.Packet()
+         arp_req.add_protocol(ethernet.ethernet(ethertype=ether_types.ETH_TYPE_ARP,
+                                  dst="ff:ff:ff:ff:ff:ff", src=r3))
+         arp_req.add_protocol(arp.arp(opcode=arp.ARP_REQUEST,
+                                  src_mac=r3, src_ip=r2,
+                                  dst_mac="ff:ff:ff:ff:ff:ff",
+                                  dst_ip=ic.dst))
+                                  
+         arp_req.serialize()
+         actions = []
+         actions.append(datapath.ofproto_parser.OFPActionOutput(in_port))
+         parser = datapath.ofproto_parser  
+         ofproto = datapath.ofproto
+         out = parser.OFPPacketOut(datapath=datapath, buffer_id=ofproto.OFP_NO_BUFFER,
+                                  in_port=ofproto.OFPP_CONTROLLER, actions=actions, data=arp_req)
+         datapath.send_msg(out)
+    
+    def send_port_desc_stats_request(self, datapath):
+       ofp_parser = datapath.ofproto_parser
 
-    def apply_filter_table_rules(self, datapath):
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ip_proto=in_proto.IPPROTO_TCP)
-        mod = parser.OFPFlowMod(datapath=datapath, table_id=FILTER_TABLE,
-                                priority=10000, match=match)
-        datapath.send_msg(mod)
+       req = ofp_parser.OFPPortDescStatsRequest(datapath, 0)
+       datapath.send_msg(req)
 
+    @set_ev_cls(ofp_event.EventOFPPortDescStatsReply, MAIN_DISPATCHER)
+    def port_desc_stats_reply_handler(self, ev):
+       for p in ev.msg.body:
+            self.L3SwitchMACs.update({p.port_no : p.hw_addr})
+       print(self.L3SwitchMACs)
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
@@ -120,61 +194,45 @@ class SwitchL3(app_manager.RyuApp):
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             # ignore lldp packet
             return
+        if eth.ethertype == ether_types.ETH_TYPE_IPV6:
+            # ignore ipv6
+            return
+
         dst = eth.dst
         src = eth.src
 
-        dpid = datapath.id
+        dpid = format(datapath.id, "d").zfill(16)
         self.mac_to_port.setdefault(dpid, {})
 
-        self.logger.info("packet DPID: %s | SRC_MAC: %s | SRC_IP: %s | DST_MAC: %s | DST_IP: %s | IN_PORT: %s", dpid, src, src_ip, dst, dst_ip, in_port)
-        
-        self.mac_to_ip.setdefault(dpid, {})
-        self.mac_to_ip[dpid].setdefault(src,src_ip)
-             self.logger.info(self.mac_to_ip)  
+        self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
 
         # learn a mac address to avoid FLOOD next time.
         self.mac_to_port[dpid][src] = in_port
+        
+        # Check whether is it arp packet
+        if eth.ethertype == ether_types.ETH_TYPE_ARP:
+            self.logger.info("Received ARP Packet %s %s %s ", dpid, src, dst)
+            a = pkt.get_protocol(arp.arp)
+            self.arp_reply(datapath, eth, a, in_port)
+            return
+
+        
+        self.logger.info("Received ICMP Packet %s %s %s ", dpid, src, dst)
+        ic = pkt.get_protocol(ipv4.ipv4)
+        if ic != None:
+         self.arp_request(datapath, eth, ic, in_port)   
+
+        print("aa")
+        print(self.ip_to_port)
 
         if dst in self.mac_to_port[dpid]:
             out_port = self.mac_to_port[dpid][dst]
         else:
             out_port = ofproto.OFPP_FLOOD
+        
 
         actions = [parser.OFPActionOutput(out_port)]
 
-        # install a flow to avoid packet_in next time
-        if out_port != ofproto.OFPP_FLOOD:
-
-            # check IP Protocol and create a match for IP
-            if eth.ethertype == ether_types.ETH_TYPE_IP:
-                ip = pkt.get_protocol(ipv4.ipv4)
-                srcip = ip.src
-                dstip = ip.dst
-                protocol = ip.proto
-
-            
-            
-                # Lida com Protocolo ICMP
-                if protocol == in_proto.IPPROTO_ICMP:
-                    match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol)
-            
-                #  Lida com Protocolo TCP
-                elif protocol == in_proto.IPPROTO_TCP:
-                    tcp = pkt.get_protocol(tcp.tcp)
-                    match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, tcp_src=tcp.src_port, tcp_dst=tcp.dst_port,)
-            
-                #  Lida com Protocolo UDP
-                elif protocol == in_proto.IPPROTO_UDP:
-                    udp = pkt.get_protocol(udp.udp)
-                    match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, udp_src=udp.src_port, udp_dst=udp.dst_port,)            
-
-                # verify if we have a valid buffer_id, if yes avoid to send both
-                # flow_mod & packet_out
-                if msg.buffer_id != ofproto.OFP_NO_BUFFER:
-                    self.add_flow(datapath, 1, match, actions, msg.buffer_id)
-                    return
-                else:
-                    self.add_flow(datapath, 1, match, actions)
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
             data = msg.data
@@ -182,6 +240,4 @@ class SwitchL3(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
-        
-            def add_sw_table_entry(self, port, host_addr):
-        self.switch_table[int(port)] = host_addr
+
