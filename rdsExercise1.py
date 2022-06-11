@@ -5,10 +5,8 @@ from mininet.topolib import TreeTopo
 from mininet.log import setLogLevel
 from mininet.cli import CLI
 
-class RDSTopo( Topo ):
-    "Topologia de Exercicio 1"
 
-    def build( self ):
+def topo():
         "Desenvolvimento da topologia"
 
         net = Mininet( controller=RemoteController, switch=OVSSwitch,
@@ -17,24 +15,34 @@ class RDSTopo( Topo ):
 
         # Criação de Utilizadores e Switch
         
-        l2Switch = self.addSwitch( 's1' )
-        hostOne = self.addHost( 'h1' )
-        hostTwo = self.addHost( 'h2' )
-        hostThree = self.addHost( 'h3' )
-        hostFour = self.addHost( 'h4' )
+        l2Switch = net.addSwitch( 's1' )
+        hostOne = net.addHost( 'h1' )
+        hostTwo = net.addHost( 'h2' )
+        hostThree = net.addHost( 'h3' )
+        hostFour = net.addHost( 'h4' )
         
         # Criação do Controlador para ligacao ao Switch de Layer 2
         
-        c1 = net.addController( 's1', port=6653)
-        c8 = RemoteController( 'c1', ip='127.0.0.1')
-
+        c0 = net.addController( 'c0',  ip='127.0.0.1', port=6653, protocols='OpenFlow13')
 
         # Ligação entre Switch e Hosts
         
-        self.addLink( 's1', 'h1' ) # Ligação Utilizador 1 e Switch Layer 2
-        self.addLink( 's1', 'h2' ) # Ligação Utilizador 2 e Switch Layer 2
-        self.addLink( 's1', 'h3' ) # Ligação Utilizador 3 e Switch Layer 2
-        self.addLink( 's1', 'h4' ) # Ligação Utilizador 4 e Switch Layer 2
+        net.addLink( 's1', 'h1' ) # Ligação Utilizador 1 e Switch Layer 2
+        net.addLink( 's1', 'h2' ) # Ligação Utilizador 2 e Switch Layer 2
+        net.addLink( 's1', 'h3' ) # Ligação Utilizador 3 e Switch Layer 2
+        net.addLink( 's1', 'h4' ) # Ligação Utilizador 4 e Switch Layer 2
+
+        
+        net.build()
+        
+        c0.start()
+        l2Switch.start([c0])
+
+        CLI(net)
+        net.stop()
 
 
-topos = { 'mytopo': ( lambda: RDSTopo() ) }
+
+if __name__ == '__main__':
+   setLogLevel ('info')
+   topo()
