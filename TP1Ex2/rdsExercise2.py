@@ -1,79 +1,98 @@
-from mininet.topo import Topo
+#coding=utf-8
+
 from mininet.net import Mininet
-from mininet.node import OVSSwitch, Controller, RemoteController, Ryu
-from mininet.topolib import TreeTopo
-from mininet.log import setLogLevel
+from mininet.topo import Topo
+from mininet.node import RemoteController
+from mininet.node import OVSSwitch
 from mininet.cli import CLI
+from mininet.log import info
+from mininet.log import setLogLevel
+from mininet.link import TCLink
+from subprocess import call
 
 
-
-class RDSTopo( Topo ):
-    "Topologia de Exercicio 1"
-
-    def build( self ):
+def topo():
         "Desenvolvimento da topologia"
         
-        net = Mininet( controller=RemoteController, switch=OVSSwitch,
-                   waitConnected=True)
+        net = Mininet( controller=RemoteController, switch=OVSSwitch)
 
+                                   
+       
+        #Criação do Controlador para ligacao ao Switch principal de Layer 3
+        
+        c0 = net.addController( 'c0',  ip='127.0.0.1', port=6653, protocols='OpenFlow13')
+        
+        # Criação do Controlador para ligacao aos Switchs de Layer 2
+        
+        c1 = net.addController( 'c1', port=6633, ip='127.0.0.1', protocols='OpenFlow13')
+        
 
        # Criação de Utilizadores com respetivo ip e Switchs de Layer 3 e Layer 2
         
-        l3Switch = self.addSwitch('s1')
-        l2Switch = self.addSwitch( 's2' )
-        l2Switch = self.addSwitch( 's3' )
-        l2Switch = self.addSwitch( 's4' )
+        s1 = net.addSwitch( 's1', dpid='0000000000000001', protocols='OpenFlow13')
+        s2 = net.addSwitch( 's2', dpid='0000000000000002', protocols='OpenFlow13' )
+        s3 = net.addSwitch( 's3', dpid='0000000000000003', protocols='OpenFlow13' )
+        s4 = net.addSwitch( 's4', dpid='0000000000000004', protocols='OpenFlow13' )
+
+        # Rede A
         
-        hostOne = self.addHost( 'h1', ip='10.0.1.1')
-        hostTwo = self.addHost( 'h2', ip='10.0.1.2' )
-        hostThree = self.addHost( 'h3', ip='10.0.1.3')
+        h1 = net.addHost( 'h1', ip='10.0.1.1/24', mac='00:00:00:00:00:01', defaultRoute='via 10.0.1.254')
+        h2 = net.addHost( 'h2', ip='10.0.1.2/24', mac='00:00:00:00:00:02', defaultRoute='via 10.0.1.254')
+        h3 = net.addHost( 'h3', ip='10.0.1.3/24', mac='00:00:00:00:00:03', defaultRoute='via 10.0.1.254')
         
-        hostFour = self.addHost( 'h4', ip='10.0.2.1' )
-        hostFive = self.addHost( 'h5', ip='10.0.2.6' )
-        hostSix = self.addHost( 'h6', ip='10.0.2.10' )
+        # Rede B
         
+        h4 = net.addHost( 'h4', ip='10.0.2.1/24', mac='00:00:00:00:00:04', defaultRoute='via 10.0.2.254')
+        h5 = net.addHost( 'h5', ip='10.0.2.2/24', mac='00:00:00:00:00:05', defaultRoute='via 10.0.2.254' )
+        h6 = net.addHost( 'h6', ip='10.0.2.3/24', mac='00:00:00:00:00:06', defaultRoute='via 10.0.2.254' )
         
-        hostSeven = self.addHost( 'h7', ip='10.0.3.6' )
-        hostEight = self.addHost( 'h8', ip='10.0.3.7' )
-        hostNine = self.addHost( 'h9', ip='10.0.3.9')
+        # Rede C
         
-                
-       
-        # Criação do Controlador para ligacao ao Switch principal de Layer 3
+        h7 = net.addHost( 'h7', ip='10.0.3.1/24', mac='00:00:00:00:00:07', defaultRoute='via 10.0.3.254')
+        h8 = net.addHost( 'h8', ip='10.0.3.2/24', mac='00:00:00:00:00:08', defaultRoute='via 10.0.3.254')
+        h9 = net.addHost( 'h9', ip='10.0.3.3/24', mac='00:00:00:00:00:09', defaultroute='via 10.0.3.254')
         
-        c1 = net.addController( 's1', port=6653)
-        c8 = RemoteController( 'c1', ip='127.0.0.1')
-        
-      
+
+
         # Ligação entre Switchs
         
-        self.addLink ( 's1', 's2', delay='5ms') # Ligação Switch layer 3 com primeiro switch de layer 2 e perdas de 5ms
-        self.addLink ( 's1', 's3' ) # Ligação Switch layer 3 com segundo switch de layer 2
-        self.addLink ( 's1', 's4' ) # Ligação Switch layer 3 com terceiro switch de layer 2
+        net.addLink ( s1, s2, delay='5ms') # Ligação Switch layer 3 com primeiro switch de layer 2 e perdas de 5ms
+        net.addLink ( s1, s3 ) # Ligação Switch layer 3 com segundo switch de layer 2
+        net.addLink ( s1, s4 ) # Ligação Switch layer 3 com terceiro switch de layer 2
         
         
-        # Ligação entre Switchs e Utilizadores Seccao A
+        # Ligação entre Switchs e Utilizadores Rede A
         
-        self.addLink( 's2', 'h1' ) # Ligação Switch1 e Utilizador 1
-        self.addLink( 's2', 'h2', bw=100 ) # Ligação Switch1 e Utilizador 2
-        self.addLink( 's2', 'h3' ) # Ligação Switch1 e Utilizador 3
+        net.addLink( s2, h1 , bw=100) # Ligação Switch1 e Utilizador 1 e bandwidth de 100
+        net.addLink( s2, h2 ) # Ligação Switch1 e Utilizador 2
+        net.addLink( s2, h3 ) # Ligação Switch1 e Utilizador 3
         
-        # Ligação entre Switchs e Utilizadores Seccao B
+        # Ligação entre Switchs e Utilizadores Rede B
         
-        self.addLink( 's3', 'h4' ) # Ligação Switch 2 e Utilizador 4
-        self.addLink( 's3', 'h5' ) # Ligação Switch 2 e Utilizador 5
-        self.addLink( 's3', 'h6', delay='5ms' ) # Ligação Switch 2 e Utilizador 6 com atrasos de 5ms
+        net.addLink( s3, h4 ) # Ligação Switch 2 e Utilizador 4
+        net.addLink( s3, h5 ) # Ligação Switch 2 e Utilizador 5
+        net.addLink( s3, h6, delay='5ms' ) # Ligação Switch 2 e Utilizador 6 com atrasos de 5ms
         
-        # Ligação entre Switchs e Utilizadores Seccao C
+        # Ligação entre Switchs e Utilizadores Rede C
         
-        self.addLink( 's4', 'h7' ) # Ligação Switch 3 e Utilizador 7
-        self.addLink( 's4', 'h8' ) # Ligação Switch 3 e Utilizador 8
-        self.addLink( 's4', 'h9', loss=10 ) # Ligação Switch 3 e Utilizador 9 com perdas em 10%
+        net.addLink( s4, h7 ) # Ligação Switch 3 e Utilizador 7
+        net.addLink( s4, h8 ) # Ligação Switch 3 e Utilizador 8
+        net.addLink( s4, h9, loss=10 ) # Ligação Switch 3 e Utilizador 9 com perdas em 10%
+        
+        
+        net.build()
+        
+        c0.start()
+        c1.start()
 
-        
-        "c2 = net.addController( 's2')"
-        "c3 = net.addController( 's3')"
-        "c4 = net.addController( 's4')"
-        "c9 = RemoteController( 'c2')"
-           
-topos = { 'mytopo': ( lambda: RDSTopo() ) }
+        s1.start([c0])
+        s2.start([c1])
+        s3.start([c1])
+        s4.start([c1])
+
+        CLI(net)
+        net.stop()
+
+if __name__ == '__main__':
+   setLogLevel ('info')
+   topo()
