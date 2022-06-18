@@ -37,9 +37,9 @@ def topo():
 
        # Criação de Routers e ligação entre eles
         
-        rRedeA = net.addRouter('rA', ip='10.0.1.1/24')
-        rRedeB = net.addRouter( 'rB', ip='10.0.2.1/24')
-        rRedeC = net.addRouter( 'rC', ip='10.0.3.1/24')
+        rRedeA = net.addRouter('rA', ip='10.0.1.1/24', protocols='OpenFlow13')
+        rRedeB = net.addRouter( 'rB', ip='10.0.2.1/24', protocols='OpenFlow13')
+        rRedeC = net.addRouter( 'rC', ip='10.0.3.1/24', protocols='OpenFlow13')
         
         r1r3 = net.addLink ( 'rA', 'rC', delay='5ms') # Ligação entre Router Rede A e Router Rede C
         r1r2 = net.addLink ( 'rA', 'rB') # Ligação entre Router Rede A e Router Rede B
@@ -47,21 +47,21 @@ def topo():
         
         # Rede A
         
-        h1 = net.addHost( 'h1', ip='10.0.1.5/24', mac='01:00:00:00:00:01', defaultRoute='via 10.0.1.254')
-        h2 = net.addHost( 'h2', ip='10.0.1.5/24', mac='01:00:00:00:00:02', defaultRoute='via 10.0.1.254')
-        h2 = net.addHost( 'h3', ip='10.0.1.6/24', mac='01:00:00:00:00:03', defaultRoute='via 10.0.1.254')
+        h1 = net.addHost( 'h1', ip='10.0.1.5/24', mac='00:00:00:00:00:01', defaultRoute='via 10.0.1.254')
+        h2 = net.addHost( 'h2', ip='10.0.1.8/24', mac='00:00:00:00:00:02', defaultRoute='via 10.0.1.254')
+        h3 = net.addHost( 'h3', ip='10.0.1.10/24', mac='00:00:00:00:00:03', defaultRoute='via 10.0.1.254')
         
         # Rede B
         
-        h4 = net.addHost( 'h4', ip='10.0.2.5/24', mac='02:00:00:00:00:04', defaultRoute='via 10.0.2.254')
-        h5 = net.addHost( 'h5', ip='10.0.2.7/24', mac='02:00:00:00:00:05', defaultRoute='via 10.0.2.254' )
-        h6 = net.addHost( 'h6', ip='10.0.2.10/24', mac='02:00:00:00:00:06', defaultRoute='via 10.0.2.254' )
+        h4 = net.addHost( 'h4', ip='10.0.2.6/24', mac='00:00:00:00:00:04', defaultRoute='via 10.0.2.254')
+        h5 = net.addHost( 'h5', ip='10.0.2.8/24', mac='00:00:00:00:00:05', defaultRoute='via 10.0.2.254' )
+        h6 = net.addHost( 'h6', ip='10.0.2.10/24', mac='00:00:00:00:00:06', defaultRoute='via 10.0.2.254' )
         
         # Rede C
         
-        h7 = net.addHost( 'h7', ip='10.0.3.6/24', mac='03:00:00:00:00:07', defaultRoute='via 10.0.3.254')
-        h8 = net.addHost( 'h8', ip='10.0.3.7/24', mac='03:00:00:00:00:08', defaultRoute='via 10.0.3.254')
-        h9 = net.addHost( 'h9', ip='10.0.3.9/24', mac='03:00:00:00:00:09', defaultroute='via 10.0.2.254')
+        h7 = net.addHost( 'h7', ip='10.0.3.6/24', mac='00:00:00:00:00:07', defaultRoute='via 10.0.3.254')
+        h8 = net.addHost( 'h8', ip='10.0.3.9/24', mac='00:00:00:00:00:08', defaultRoute='via 10.0.3.254')
+        h9 = net.addHost( 'h9', ip='10.0.3.10/24', mac='00:00:00:00:00:09', defaultroute='via 10.0.3.254')
         
 
 
